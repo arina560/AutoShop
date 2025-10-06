@@ -3,8 +3,7 @@
 
 ## Описание
 Проект представляет собой систему управления интернет-магазином автомобилей.  
-Система включает функциональность для управления пользователями, автомобилями, брендами, моделями, заказами, корзинами и купонами.  
-
+Система включает функциональность для управления пользователями, автомобилями, брендами, моделями, заказами, корзинами, поставщиками и купонами.  
 ---
 
 ## Функциональные требования
@@ -32,18 +31,18 @@
 
 5. **Система заказов**:
    - Добавление автомобилей в корзину.  
-   - Оформление заказа с указанием адреса.  
-   - Применение купона.  
-   - Статусы заказов: *в обработке*, *оплачен*, *доставлен*, *отменён*.  
+   - Оформление заказа с указанием адреса и купона.  
+   - Возможность нескольких автомобилей в одном заказе.  
+   - Статусы заказов: *pending*, *paid*, *delivered*, *cancelled*.  
 
 6. **Корзина**:
    - Временное хранение выбранных автомобилей перед оформлением заказа.  
-   - Каждая корзина привязана к пользователю.  
+   - Реализована через таблицу `CartItem` для связи *многие ко многим* между `Cart` и `Car`.  
 
 7. **Система купонов и скидок**:
    - Купоны на фиксированную скидку.  
-   - Проверка срока действия купона.  
-   - Проверка минимальной суммы заказа.  
+   - Проверка срока действия купона и минимальной суммы заказа.  
+   - Связь пользователей и купонов через `UserCoupon` (M:N).  
 
 8. **Отзывы**:
    - Пользователь может оставить отзыв о купленном автомобиле.  
@@ -63,7 +62,8 @@
 - role: enum (customer, manager, admin)  
 - profile_picture: string (nullable)  
 
-**Связь**: имеет много `Order`, `Address`, одну `Cart`, может оставлять много `Review`.  
+**Связи**:
+- 1:N с `Address`, `Order`, `Review`, `Cart`, `UserCoupon`.  
 
 ---
 
@@ -78,7 +78,8 @@
 - apartment: string (nullable)  
 - is_default: bool  
 
-**Связь**: принадлежит `User`, используется в `Order`.  
+**Связи**:
+- N:1 с `User`.  
 
 ---
 
@@ -89,7 +90,8 @@
 - name: string  
 - country: string  
 
-**Связь**: имеет много `Model`.  
+**Связи**:
+- 1:N с `Model`.  
 
 ---
 
@@ -102,11 +104,26 @@
 - body_type: string  
 - engine_type: string  
 
-**Связь**: принадлежит `Brand`, имеет много `Car`.  
+**Связи**:
+- N:1 с `Brand`.  
+- 1:N с `Car`.  
 
 ---
 
-### 5. Car (Автомобиль)
+### 5. Supplier (Поставщик)
+**Назначение**: хранение информации о поставщиках/дилерах автомобилей.  
+**Поля**:
+- supplier_id: int (PK)  
+- name: string  
+- contact_info: string  
+- rating: decimal  
+
+**Связи**:
+- 1:N с `Car`.  
+
+---
+
+### 6. Car (Автомобиль)
 **Назначение**: конкретный автомобиль, выставленный на продажу.  
 **Поля**:
 - car_id: int (PK)  
@@ -118,19 +135,11 @@
 - mileage: int (nullable)  
 - status: enum (available, reserved, sold)  
 
-**Связь**: принадлежит `Model` и `Supplier`, участвует в `Order` и `Review`.  
-
----
-
-### 6. Supplier (Поставщик)
-**Назначение**: хранение информации о поставщиках/дилерах автомобилей.  
-**Поля**:
-- supplier_id: int (PK)  
-- name: string  
-- contact_info: string  
-- rating: decimal  
-
-**Связь**: имеет много `Car`.  
+**Связи**:
+- N:1 с `Model`, `Supplier`.  
+- M:N с `Cart` через `CartItem`.  
+- M:N с `Order` через `OrderItem`.  
+- 1:N с `Review`.  
 
 ---
 
@@ -141,23 +150,24 @@
 - user_id: int (FK → User)  
 - created_at: datetime  
 
-**Связь**: принадлежит `User`, может быть преобразована в `Order`.  
+**Связи**:
+- N:1 с `User`.  
+- M:N с `Car` через `CartItem`.  
+- 1:N с `Order`.  
 
 ---
 
-### 8. Order (Заказ)
-**Назначение**: оформление заказа автомобиля.  
+### 8. CartItem (Связующая таблица Cart–Car)
+**Назначение**: реализация связи *многие ко многим* между корзиной и автомобилями.  
 **Поля**:
-- order_id: int (PK)  
-- user_id: int (FK → User)  
+- cart_item_id: int (PK)  
+- cart_id: int (FK → Cart)  
 - car_id: int (FK → Car)  
-- cart_id: int (FK → Cart, nullable)  
-- total_amount: decimal  
-- status: enum (pending, paid, delivered, cancelled)  
-- created_at: datetime  
-- coupon_id: int (FK → Coupon, nullable)  
+- quantity: int  
+- added_at: datetime  
 
-**Связь**: принадлежит `User`, включает `Car`, может использовать `Coupon`.  
+**Связи**:
+- N:1 с `Cart` и `Car`.  
 
 ---
 
@@ -172,11 +182,56 @@
 - valid_until: datetime  
 - is_active: bool  
 
-**Связь**: может быть применён к одному или нескольким `Order`.  
+**Связи**:
+- 1:N с `Order`.  
+- M:N с `User` через `UserCoupon`.  
 
 ---
 
-### 10. Review (Отзыв)
+### 10. UserCoupon (Связующая таблица User–Coupon)
+**Назначение**: хранение данных о купонах, использованных пользователями.  
+**Поля**:
+- user_coupon_id: int (PK)  
+- user_id: int (FK → User)  
+- coupon_id: int (FK → Coupon)  
+- used_at: datetime (nullable)  
+
+**Связи**:
+- N:1 с `User` и `Coupon`.  
+
+---
+
+### 11. Order (Заказ)
+**Назначение**: оформление заказа.  
+**Поля**:
+- order_id: int (PK)  
+- user_id: int (FK → User)  
+- cart_id: int (FK → Cart, nullable)  
+- coupon_id: int (FK → Coupon, nullable)  
+- total_amount: decimal  
+- status: enum (pending, paid, delivered, cancelled)  
+- created_at: datetime  
+
+**Связи**:
+- N:1 с `User`, `Coupon`, `Cart`.  
+- M:N с `Car` через `OrderItem`.  
+
+---
+
+### 12. OrderItem (Связующая таблица Order–Car)
+**Назначение**: реализация связи *многие ко многим* между заказом и автомобилями.  
+**Поля**:
+- order_item_id: int (PK)  
+- order_id: int (FK → Order)  
+- car_id: int (FK → Car)  
+- price: decimal  
+
+**Связи**:
+- N:1 с `Order` и `Car`.  
+
+---
+
+### 13. Review (Отзыв)
 **Назначение**: отзывы пользователей об автомобилях.  
 **Поля**:
 - review_id: int (PK)  
@@ -186,4 +241,23 @@
 - comment: string  
 - created_at: datetime  
 
-**Связь**: принадлежит `User` и `Car`.  
+**Связи**:
+- N:1 с `User` и `Car`.  
+
+---
+
+## Структура связей (итог)
+
+| Связь | Тип |
+|-------|------|
+| User – Address | 1:N |
+| User – Cart | 1:N |
+| User – Order | 1:N |
+| User – Review | 1:N |
+| User – Coupon | M:N через UserCoupon |
+| Brand – Model | 1:N |
+| Model – Car | 1:N |
+| Supplier – Car | 1:N |
+| Cart – Car | M:N через CartItem |
+| Order – Car | M:N через OrderItem |
+| Coupon – Order | 1:N |
